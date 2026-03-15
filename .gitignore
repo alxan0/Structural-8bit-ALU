@@ -1,0 +1,49 @@
+# OS 
+.DS_Store
+Thumbs.db
+
+# ModelSim / QuestaSim
+vsim.wlf
+transcript
+work/
+msim/
+*.vstf
+*.db
+
+# Icarus Verilog / GTKWave
+a.out
+*.vvp
+*.vcd
+*.gtkw
+
+# Quartus Prime
+db/
+incremental_db/
+greybox_tmp/
+hc_output/
+*.rpt
+*.summary
+*.jdi
+*.done
+*.pin
+*.qws
+*.bak
+*.smsg
+*.txt
+output_files/
+
+# Xilinx Vivado
+.Xil/
+*.jou
+*.log
+*.pb
+*.str
+*.dir/
+*.bak
+usage_statistics_webtalk.*
+vivado_pid*.str
+vivado_*.backup.*
+
+# IDEs
+.vscode/
+*.swp
