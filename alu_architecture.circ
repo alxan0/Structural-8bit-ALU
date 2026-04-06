@@ -57,6 +57,10 @@
     <a name="circuit" val="main"/>
     <a name="circuitnamedboxfixedsize" val="true"/>
     <a name="simulationFrequency" val="1.0"/>
-    <comp lib="3" loc="(290,110)" name="Adder"/>
+    <comp lib="0" loc="(80,110)" name="Constant"/>
+    <comp lib="3" loc="(390,170)" name="Subtractor"/>
+    <comp lib="3" loc="(390,250)" name="Multiplier"/>
+    <comp lib="3" loc="(390,330)" name="Divider"/>
+    <comp lib="3" loc="(390,90)" name="Adder"/>
   </circuit>
 </project>
