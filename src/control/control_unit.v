@@ -2,7 +2,10 @@ module control_unit (
     input clk,
     input rst,
     input start,
+    input exec_done,
+    input exec_busy,
     output reg load_en,
+    output reg exec_start,
     output reg done,
     output reg [1:0] state_out
 );
@@ -21,7 +24,7 @@ module control_unit (
         case (state)
             IDLE: next_state = (start) ? LOAD : IDLE;
             LOAD: next_state = EXEC;
-            EXEC: next_state = DONE; // For now, EXEC is only 1 cycle
+            EXEC: next_state = (exec_done) ? DONE : EXEC;
             DONE: next_state = (start) ? DONE : IDLE;
             default: next_state = IDLE;
         endcase
@@ -29,6 +32,7 @@ module control_unit (
 
     always @(*) begin
         load_en = (state == LOAD);
+        exec_start = (state == EXEC) && !exec_busy;
         done = (state == DONE);
         state_out = state;
     end
