@@ -18,6 +18,8 @@ iverilog -o $OUT_FILE \
     src/arithmetic/adder/xor_wordgate.v \
     src/arithmetic/adder/carry_select_adder.v \
     src/arithmetic/adder/adder_substractor.v \
+    src/arithmetic/multiplier/shift_add_multiplier.v \
+    src/arithmetic/division/Radix2.v \
     sim/alu_tb.v
 
 if [ $? -eq 0 ]; then
