@@ -77,7 +77,7 @@ module alu_top (
         .result(addsub_result)
     );
 
-    shift_add_multiplier mul_unit (
+    booth_radix_4_multiplier mul_unit (
         .clk(clk), .rst(rst),
         .start(exec_start),
         .multiplicand(A_internal), .multiplier(B_internal),
