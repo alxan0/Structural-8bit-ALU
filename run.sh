@@ -25,7 +25,7 @@ iverilog -o $OUT_FILE \
 if [ $? -eq 0 ]; then
     echo "Compilation Successful!"
 else
-    echo "Compilation FAILED. Check your syntax."
+    echo "Compilation FAILED"
     exit 1
 fi
 

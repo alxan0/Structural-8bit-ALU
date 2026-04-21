@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(apk add *)",
+      "Bash(pip install *)"
+    ]
+  }
+}
