@@ -22,7 +22,6 @@ module alu_tb;
 
     always #5 clk = ~clk;
 
-    // Task: apply inputs, pulse start, wait for done, check result
     task run_op;
         input [7:0] in_a;
         input [7:0] in_b;
@@ -65,26 +64,41 @@ module alu_tb;
         run_op(8'd5,   8'd3,   2'b00, 16'd8,   "ADD 5+3");
         run_op(8'd100, 8'd55,  2'b00, 16'd155, "ADD 100+55");
         run_op(8'd0,   8'd0,   2'b00, 16'd0,   "ADD 0+0");
+        run_op(8'd1,   8'd0,   2'b00, 16'd1,   "ADD 1+0");
+        run_op(8'd128, 8'd127, 2'b00, 16'd255, "ADD 128+127");
         run_op(8'd255, 8'd1,   2'b00, 16'd0,   "ADD 255+1 wrap");
+        run_op(8'd255, 8'd255, 2'b00, 16'd254, "ADD 255+255 wrap");
+        run_op(8'd128, 8'd128, 2'b00, 16'd0,   "ADD 128+128 wrap");
 
         // --- Subtraction (opcode 01) ---
         run_op(8'd10,  8'd4,   2'b01, 16'd6,   "SUB 10-4");
         run_op(8'd200, 8'd50,  2'b01, 16'd150, "SUB 200-50");
+        run_op(8'd5,   8'd5,   2'b01, 16'd0,   "SUB 5-5");
+        run_op(8'd255, 8'd255, 2'b01, 16'd0,   "SUB 255-255");
+        run_op(8'd128, 8'd1,   2'b01, 16'd127, "SUB 128-1");
         run_op(8'd0,   8'd1,   2'b01, 16'd255, "SUB 0-1 wrap");
+        run_op(8'd1,   8'd255, 2'b01, 16'd2,   "SUB 1-255 wrap");
 
-        // --- Multiplication (opcode 10) ---
+        // --- Multiplication (opcode 10, signed Booth) ---
         run_op(8'd7,   8'd6,   2'b10, 16'd42,   "MUL 7*6");
         run_op(8'd15,  8'd15,  2'b10, 16'd225,  "MUL 15*15");
-        run_op(8'd255, 8'd2,   2'b10, 16'd510,  "MUL 255*2");
+        run_op(8'd1,   8'd1,   2'b10, 16'd1,    "MUL 1*1");
         run_op(8'd0,   8'd123, 2'b10, 16'd0,    "MUL 0*123");
         run_op(8'd12,  8'd12,  2'b10, 16'd144,  "MUL 12*12");
+        run_op(8'd127, 8'd2,   2'b10, 16'd254,  "MUL 127*2");
+        run_op(8'd64,  8'd3,   2'b10, 16'd192,  "MUL 64*3");
+        run_op(8'd255, 8'd2,   2'b10, 16'hFFFE, "MUL -1*2 signed");
 
-        // --- Division (opcode 11) ---
-        // result = {remainder[7:0], quotient[7:0]}
-        run_op(8'd42,  8'd6,   2'b11, {8'd0, 8'd7},  "DIV 42/6");
-        run_op(8'd100, 8'd10,  2'b11, {8'd0, 8'd10}, "DIV 100/10");
-        run_op(8'd17,  8'd5,   2'b11, {8'd2, 8'd3},  "DIV 17/5");
-        run_op(8'd255, 8'd16,  2'b11, {8'd15, 8'd15},"DIV 255/16");
+        // --- Division (opcode 11), result = {remainder, quotient} ---
+        run_op(8'd42,  8'd6,   2'b11, {8'd0,  8'd7},  "DIV 42/6");
+        run_op(8'd100, 8'd10,  2'b11, {8'd0,  8'd10}, "DIV 100/10");
+        run_op(8'd17,  8'd5,   2'b11, {8'd2,  8'd3},  "DIV 17/5");
+        run_op(8'd255, 8'd16,  2'b11, {8'd15, 8'd15}, "DIV 255/16");
+        run_op(8'd0,   8'd5,   2'b11, {8'd0,  8'd0},  "DIV 0/5");
+        run_op(8'd7,   8'd7,   2'b11, {8'd0,  8'd1},  "DIV 7/7");
+        run_op(8'd1,   8'd2,   2'b11, {8'd1,  8'd0},  "DIV 1/2");
+        run_op(8'd255, 8'd255, 2'b11, {8'd0,  8'd1},  "DIV 255/255");
+        run_op(8'd100, 8'd7,   2'b11, {8'd2,  8'd14}, "DIV 100/7");
 
         #50;
         $display("ALL TESTS PASSED");

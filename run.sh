@@ -11,12 +11,12 @@ iverilog -o $OUT_FILE \
     src/alu_top.v \
     src/control/control_unit.v \
     src/common/register_8bit.v \
-    src/arithmetic/adder/full_adder_cell.v \
-    src/arithmetic/adder/mux2to1.v \
-    src/arithmetic/adder/adder_level.v \
-    src/arithmetic/adder/ripple_carry_adder.v \
-    src/arithmetic/adder/xor_wordgate.v \
-    src/arithmetic/adder/carry_select_adder.v \
+    src/common/full_adder_cell.v \
+    src/common/mux2to1.v \
+    src/common/adder_level.v \
+    src/common/ripple_carry_adder.v \
+    src/common/xor_wordgate.v \
+    src/common/carry_select_adder.v \
     src/arithmetic/adder/adder_substractor.v \
     src/arithmetic/multiplier/booth_radix_4_multiplier.v \
     src/arithmetic/division/Radix2.v \

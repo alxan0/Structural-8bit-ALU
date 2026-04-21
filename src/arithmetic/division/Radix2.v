@@ -1,4 +1,3 @@
-// Code your design here
 module radix2_div #(parameter WIDTH = 8) (
     input  wire clk,
     input  wire reset,
@@ -11,13 +10,24 @@ module radix2_div #(parameter WIDTH = 8) (
     output reg  done
 );
 
-    // Internal registers
     reg [WIDTH-1:0] A, M, Q;
     reg [3:0] count;
     reg state;
 
     localparam IDLE = 1'b0;
     localparam CALC = 1'b1;
+
+    wire [WIDTH-1:0] shifted_A = {A[WIDTH-2:0], Q[WIDTH-1]};
+
+    wire [WIDTH-1:0] M_inv;
+    xor_wordgate #(.w(WIDTH)) neg_m (.in(M), .bit_in(1'b1), .out(M_inv));
+
+    wire [WIDTH-1:0] sub_result;
+    wire sub_cout;
+    carry_select_adder sub_adder (.op1(shifted_A), .op2(M_inv), .c_in(1'b1), .result(sub_result), .c_out(sub_cout));
+
+    wire [WIDTH-1:0] restore_result;
+    carry_select_adder restore_adder (.op1(sub_result), .op2(M), .c_in(1'b0), .result(restore_result), .c_out());
 
     always @(posedge clk or posedge reset) begin
         if (reset) begin
@@ -34,7 +44,7 @@ module radix2_div #(parameter WIDTH = 8) (
                         A     <= 0;
                         M     <= divisor;
                         Q     <= dividend;
-                        count <= WIDTH 	;
+                        count <= WIDTH;
                         state <= CALC;
                         ready <= 0;
                     end
@@ -42,24 +52,15 @@ module radix2_div #(parameter WIDTH = 8) (
 
                 CALC: begin
                     if (count > 0) begin
-                        // Shift A and Q left as a single unit
-                        // We use a temporary wire to simulate the shift-then-sub/add
-                        if (A[WIDTH-1] == 0) begin
-                            // A is positive: Shift then Subtract
-                            {A, Q} <= {A[WIDTH-2:0], Q, 1'b0}; 
-                            // Note: We adjust the logic slightly for the non-restoring step
-                            // In this hardware flow, we perform the math on the shifted A
-                            if ({A[WIDTH-2:0], Q[WIDTH-1]} >= M) begin
-                                A <= {A[WIDTH-2:0], Q[WIDTH-1]} - M;
-                                Q <= {Q[WIDTH-2:0], 1'b1};
-                            end else begin
-                                A <= {A[WIDTH-2:0], Q[WIDTH-1]};
-                                Q <= {Q[WIDTH-2:0], 1'b0};
-                            end
+                        if (sub_cout) begin
+                            A <= sub_result;
+                            Q <= {Q[WIDTH-2:0], 1'b1};
+                        end else begin
+                            A <= restore_result;
+                            Q <= {Q[WIDTH-2:0], 1'b0};
                         end
                         count <= count - 1;
                     end else begin
-                        // Final alignment
                         quotient  <= Q;
                         remainder <= A;
                         done      <= 1;

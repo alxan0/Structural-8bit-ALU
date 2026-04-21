@@ -5,7 +5,7 @@ module alu_top (
     input [1:0] opcode,
     input [7:0] A_raw,
     input [7:0] B_raw,
-    output reg [15:0] result,
+    output wire [15:0] result,
     output carry_out,
     output overflow,
     output done
@@ -20,27 +20,22 @@ module alu_top (
     wire sel_div = (opcode == 2'b11);
     wire sel_addsub = sel_add | sel_sub;
 
-    // Add/Sub
     wire addsub_busy, addsub_done, addsub_cout, addsub_overflow;
     wire [7:0] addsub_result;
 
-    // Multiply
     wire mul_busy, mul_done;
     wire [15:0] mul_result;
 
-    // Divide
     wire div_ready, div_done;
     wire [7:0] div_quotient, div_remainder;
 
-    wire effective_busy = sel_addsub ? addsub_busy :
-                          sel_mul    ? mul_busy    :
-                          sel_div    ? ~div_ready  :
-                                       1'b0;
+    wire busy_muldiv, effective_busy;
+    mux2to1 #(.w(1)) mux_busy_muldiv (.in0(mul_busy),    .in1(~div_ready),  .sel(opcode[0]), .out(busy_muldiv));
+    mux2to1 #(.w(1)) mux_busy        (.in0(addsub_busy), .in1(busy_muldiv), .sel(opcode[1]), .out(effective_busy));
 
-    wire effective_done = sel_addsub ? addsub_done :
-                          sel_mul    ? mul_done    :
-                          sel_div    ? div_done    :
-                                       1'b1;
+    wire done_muldiv, effective_done;
+    mux2to1 #(.w(1)) mux_done_muldiv (.in0(mul_done),    .in1(div_done),    .sel(opcode[0]), .out(done_muldiv));
+    mux2to1 #(.w(1)) mux_done        (.in0(addsub_done), .in1(done_muldiv), .sel(opcode[1]), .out(effective_done));
 
     control_unit brain (
         .clk(clk), .rst(rst), .start(start),
@@ -64,7 +59,6 @@ module alu_top (
         .data_in(B_raw),
         .data_out(B_internal)
     );
-
 
     adder_substractor add_sub_unit (
         .clk(clk), .rst(rst),
@@ -97,14 +91,8 @@ module alu_top (
     assign carry_out = addsub_cout;
     assign overflow  = addsub_overflow;
 
-    always @(*) begin
-        case (opcode)
-            2'b00: result = {8'b0, addsub_result};          
-            2'b01: result = {8'b0, addsub_result};          
-            2'b10: result = mul_result;                     
-            2'b11: result = {div_remainder, div_quotient};   // remainder:quotient
-            default: result = 16'b0;
-        endcase
-    end
+    wire [15:0] result_muldiv;
+    mux2to1 #(.w(16)) mux_result_muldiv (.in0(mul_result), .in1({div_remainder, div_quotient}), .sel(opcode[0]), .out(result_muldiv));
+    mux2to1 #(.w(16)) mux_result        (.in0({8'b0, addsub_result}), .in1(result_muldiv),       .sel(opcode[1]), .out(result));
 
 endmodule
