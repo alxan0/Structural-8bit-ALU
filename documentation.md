@@ -1,74 +1,65 @@
-# Structural 8-bit ALU
+# ALU Structural pe 8 biți
 
-## 1. Scope and Functional Definition
+## 1. Domeniu și Definiție Funcțională
 
-This document defines the architecture, interfaces, and behavior of the Structural 8-bit ALU implementation in this repository.
+Acest document definește arhitectura, interfețele și comportamentul implementării structurale a ALU-ului pe 8 biți din acest repository.
 
-The ALU accepts two 8-bit operands (`A_raw`, `B_raw`) and a 2-bit opcode, then executes one of four operations:
-- addition
-- subtraction
-- multiplication
-- division
+ALU-ul acceptă doi operanzi pe 8 biți (`A_raw`, `B_raw`) și un opcode pe 2 biți, apoi execută una dintre cele patru operații: adunare, scădere, înmulțire sau împărțire. Expune o magistrală unificată de rezultat pe 16 biți, un protocol de sincronizare `start`/`done` și flaguri de stare `carry_out`/`overflow` pentru calea de adunare/scădere.
 
-The design provides a unified 16-bit result bus, operation-completion handshake (`start`/`done`), and operation-status outputs (`carry_out`, `overflow`) for add/sub cases.
+## 2. Privire de Ansamblu asupra Sistemului
 
-## 2. System Overview
+Designul este compus din:
+- un modul de integrare la nivel superior: `alu_top`
+- un automat de control (FSM): `control_unit`
+- trei motoare aritmetice: `adder_substractor`, `booth_radix_4_multiplier`, `radix2_div`
+- primitive structurale comune aflate în `src/common`
 
-The design is composed of:
-- one top-level integration module: `alu_top`
-- one control FSM: `control_unit`
-- three arithmetic engines:
-  - add/subtract engine (`adder_substractor`)
-  - multiplier engine (`booth_radix_4_multiplier`)
-  - divider engine (`radix2_div`)
-- shared structural primitives under `src/common`
+Secvența de operare la nivel superior:
+1. operanzii externi sunt capturați în registrele interne de operanzi
+2. automatul de control intră în faza de execuție
+3. motorul aritmetic selectat rulează
+4. finalizarea motorului este unificată și expusă ca semnal `done` la nivel superior
 
-Top-level operation sequence:
-1. external operands are captured into internal operand registers
-2. control FSM enters execute phase
-3. selected arithmetic engine runs
-4. done is unified and exposed at top-level output
+## 3. Specificația Interfeței Externe
 
-## 3. External Interface Specification
+Modul la nivel superior: `src/alu_top.v`
 
-Top-level module: `src/alu_top.v`
-
-| Signal | Dir | Width | Description | Notes |
+| Semnal | Dir | Lățime | Descriere | Observații |
 |---|---|---:|---|---|
-| `clk` | in | 1 | system clock | sampled on rising edge |
-| `rst` | in | 1 | asynchronous reset (active high) | clears control and state registers |
-| `start` | in | 1 | operation request/handshake | assert for at least one cycle in `IDLE` (pulse is valid); may also be held high until `done` |
-| `opcode` | in | 2 | operation selector | `00:add`, `01:sub`, `10:mul`, `11:div` |
-| `A_raw` | in | 8 | operand A | latched during `LOAD` |
-| `B_raw` | in | 8 | operand B | latched during `LOAD` |
-| `result` | out | 16 | operation result bus | encoding depends on opcode |
-| `carry_out` | out | 1 | add/sub carry-out | meaningful for add/sub path |
-| `overflow` | out | 1 | add/sub signed overflow | meaningful for add/sub path |
-| `done` | out | 1 | top-level completion signal | asserted in controller `DONE` state |
+| `clk` | in | 1 | ceas de sistem, eșantionat pe frontul crescător | |
+| `rst` | in | 1 | reset asincron, activ pe nivel înalt | resetează controlul și toate registrele de stare |
+| `start` | in | 1 | cerere de operație; menținut cel puțin un ciclu în starea `IDLE` | un puls de un ciclu este suficient; poate fi menținut ridicat până la `done` |
+| `opcode` | in | 2 | selector de operație: `00=add`, `01=sub`, `10=mul`, `11=div` | stabil la momentul asertării |
+| `A_raw` | in | 8 | operandul A, reținut în starea `LOAD` | |
+| `B_raw` | in | 8 | operandul B, reținut în starea `LOAD` | |
+| `result` | out | 16 | magistrala de rezultat | codificarea depinde de opcode |
+| `carry_out` | out | 1 | transport ieșire add/sub | semnificativ doar pe calea add/sub |
+| `overflow` | out | 1 | depășire cu semn add/sub | semnificativ doar pe calea add/sub |
+| `done` | out | 1 | asertat în starea `DONE` a controlerului | deasertat când `start` este eliberat |
 
-### 3.1 Opcode map
+### 3.1 Harta opcode-urilor
 
-| opcode | operation | selected engine | `result` format |
+| opcode | operație | motor | codificarea `result` |
 |---|---|---|---|
-| `2'b00` | add | `adder_substractor` (`sub_mode=0`) | `{8'b0, sum[7:0]}` |
-| `2'b01` | subtract | `adder_substractor` (`sub_mode=1`) | `{8'b0, diff[7:0]}` |
-| `2'b10` | multiply | `booth_radix_4_multiplier` | `product[15:0]` |
-| `2'b11` | divide | `radix2_div` | `{remainder[7:0], quotient[7:0]}` |
+| `2'b00` | adunare | `adder_substractor` (`sub_mode=0`) | `{8'b0, sum[7:0]}` |
+| `2'b01` | scădere | `adder_substractor` (`sub_mode=1`) | `{8'b0, diff[7:0]}` |
+| `2'b10` | înmulțire | `booth_radix_4_multiplier` | `product[15:0]` |
+| `2'b11` | împărțire | `radix2_div` | `{remainder[7:0], quotient[7:0]}` |
 
-## 4. Top-Level Architecture (`alu_top`)
+## 4. Arhitectura la Nivel Superior (`alu_top`)
 
-File: `src/alu_top.v`
+Fișier: `src/alu_top.v`
 
-`alu_top` is responsible for:
-- opcode decode and operation select
-- operand capture through `register_8bit`
-- dispatch of execution start
-- merge of engine busy/done status
-- merge of engine results into one output bus
+`alu_top` este responsabil pentru:
+- decodificarea opcode-ului și selectarea operației
+- capturarea operanzilor prin `register_8bit`
+- pornirea execuției pe motorul selectat
+- îmbinarea semnalelor busy/done ale motoarelor în unitatea de control
+- multiplexarea rezultatelor motoarelor pe o singură magistrală de ieșire
 
-### 4.1 Key integration behavior
+### 4.1 Comportament cheie de integrare
 
-Control unit interface:
+Interfața cu unitatea de control:
 
 ```verilog
 control_unit brain (
@@ -81,14 +72,16 @@ control_unit brain (
 );
 ```
 
-Operand registers:
+Registrele de operanzi:
 
 ```verilog
-register_8bit reg_A (... .load_en(load_en), .data_in(A_raw), .data_out(A_internal));
-register_8bit reg_B (... .load_en(load_en), .data_in(B_raw), .data_out(B_internal));
+register_8bit reg_A (.clk(clk), .rst(rst), .load_en(load_en),
+                     .data_in(A_raw), .data_out(A_internal));
+register_8bit reg_B (.clk(clk), .rst(rst), .load_en(load_en),
+                     .data_in(B_raw), .data_out(B_internal));
 ```
 
-Arithmetic dispatch:
+Despachetarea aritmetică:
 
 ```verilog
 adder_substractor add_sub_unit (
@@ -108,289 +101,280 @@ radix2_div div_unit (
 );
 ```
 
-### 4.2 Unified control handshake
+Multiplexarea rezultatelor (două instanțe structurale `mux2to1` în cascadă):
 
-`effective_busy` and `effective_done` are selected using opcode-driven muxes:
-- add/sub path: `addsub_busy`, `addsub_done`
-- mul path: `mul_busy`, `mul_done`
-- div path: `~div_ready`, `div_done`
+```verilog
+mux2to1 #(.w(16)) mux_result_muldiv (
+    .in0(mul_result), .in1({div_remainder, div_quotient}),
+    .sel(opcode[0]), .out(result_muldiv));
+mux2to1 #(.w(16)) mux_result (
+    .in0({8'b0, addsub_result}), .in1(result_muldiv),
+    .sel(opcode[1]), .out(result));
+```
 
-This allows a single control FSM implementation to supervise all operations.
+### 4.2 Protocol unificat de control
 
-## 5. Control Unit Specification (`control_unit`)
+`effective_busy` și `effective_done` sunt selectate prin perechi de `mux2to1` controlate de opcode:
+- calea add/sub: `addsub_busy`, `addsub_done`
+- calea mul: `mul_busy`, `mul_done`
+- calea div: `~div_ready`, `div_done`
 
-File: `src/control/control_unit.v`
+Aceasta permite unui singur FSM de control să supravegheze toate operațiile fără logică de control specifică fiecărui motor.
 
-### 5.1 State encoding
+## 5. Specificația Unității de Control (`control_unit`)
 
-| State | Encoding |
+Fișier: `src/control/control_unit.v`
+
+### 5.1 Codificarea stărilor
+
+| Stare | Codificare |
 |---|---|
 | `IDLE` | `2'b00` |
 | `LOAD` | `2'b01` |
 | `EXEC` | `2'b10` |
 | `DONE` | `2'b11` |
 
-### 5.2 Transition logic
+### 5.2 Logica de tranziție
 
 ```verilog
-case (state)
-    IDLE:    next_state = start     ? LOAD : IDLE;
-    LOAD:    next_state = EXEC;
-    EXEC:    next_state = exec_done ? DONE : EXEC;
-    DONE:    next_state = start     ? DONE : IDLE;
-    default: next_state = IDLE;
-endcase
+always @(*) begin
+    case (state)
+        IDLE:    next_state = start     ? LOAD : IDLE;
+        LOAD:    next_state = EXEC;
+        EXEC:    next_state = exec_done ? DONE : EXEC;
+        DONE:    next_state = start     ? DONE : IDLE;
+        default: next_state = IDLE;
+    endcase
+end
 ```
 
-### 5.3 Transition table
+### 5.3 Tabelul tranzițiilor
 
-| Current | Condition | Next | Intent |
+| Stare curentă | Condiție | Stare următoare | Intenție |
 |---|---|---|---|
-| `IDLE` | `start=0` | `IDLE` | wait for request |
-| `IDLE` | `start=1` | `LOAD` | capture operands |
-| `LOAD` | always | `EXEC` | single-cycle load stage |
-| `EXEC` | `exec_done=0` | `EXEC` | continue execution |
-| `EXEC` | `exec_done=1` | `DONE` | operation complete |
-| `DONE` | `start=1` | `DONE` | hold completion |
-| `DONE` | `start=0` | `IDLE` | handshake release |
+| `IDLE` | `start=0` | `IDLE` | așteptare cerere |
+| `IDLE` | `start=1` | `LOAD` | capturare operanzi |
+| `LOAD` | întotdeauna | `EXEC` | etapă de încărcare pe un singur ciclu |
+| `EXEC` | `exec_done=0` | `EXEC` | continuare execuție |
+| `EXEC` | `exec_done=1` | `DONE` | operație finalizată |
+| `DONE` | `start=1` | `DONE` | menținere completare |
+| `DONE` | `start=0` | `IDLE` | eliberare protocol |
 
-### 5.4 Output table
+### 5.4 Tabelul ieșirilor
 
-| State | `load_en` | `exec_start` | `done` |
+| Stare | `load_en` | `exec_start` | `done` |
 |---|---:|---:|---:|
 | `IDLE` | 0 | 0 | 0 |
 | `LOAD` | 1 | 0 | 0 |
 | `EXEC` | 0 | `!exec_busy && !exec_done` | 0 |
 | `DONE` | 0 | 0 | 1 |
 
-### 5.5 Handshake requirement
+### 5.5 Cerința protocolului de sincronizare
 
-`start` only needs to be asserted long enough for the controller to observe it in `IDLE` (a one-cycle pulse is sufficient).
+`start` trebuie asertat suficient de mult timp cât controlorul să îl observe în starea `IDLE` — un puls de un ciclu este suficient. Dacă `start` rămâne ridicat după finalizare, `done` rămâne ridicat în starea `DONE` și controlorul rămâne acolo. Deasertarea `start` determină întoarcerea la `IDLE`.
 
-If `start` remains high after completion, `done` remains high in `DONE` and the controller stays there. Deassert `start` to return to `IDLE`.
+## 6. Specificațiile Componentelor Aritmetice
 
-## 6. Arithmetic Component Specifications
+### 6.1 Adunare/Scădere (`adder_substractor`)
 
-### 6.1 Add/Sub (`adder_substractor`)
+Fișier: `src/arithmetic/adder/adder_substractor.v`
 
-File: `src/arithmetic/adder/adder_substractor.v`
+- `sub_mode=0`: calculează `op1 + op2`
+- `sub_mode=1`: calculează `op1 + (~op2) + 1` (scădere în complement față de doi)
 
-Functional behavior:
-- if `sub_mode=0`: compute `op1 + op2`
-- if `sub_mode=1`: compute `op1 + (~op2) + 1`
-
-Datapath implementation:
+Implementarea căii de date:
 
 ```verilog
 xor_wordgate #(.w(8)) gate (.in(op2), .bit_in(sub_mode), .out(op2_xor));
-carry_select_adder add (.op1(op1), .op2(op2_xor), .c_in(sub_mode), ...);
+carry_select_adder add  (.op1(op1), .op2(op2_xor), .c_in(sub_mode),
+                         .result(adder_result), .c_out(adder_c_out));
+assign overflow_raw = (op1[7] == op2_xor[7]) && (adder_result[7] != op1[7]);
 ```
 
-Status outputs:
-- `c_out`: carry-out of the 8-bit adder
-- `overflow`: signed overflow, computed by
+Ieșiri de stare:
+- `c_out`: transportul de ieșire al sumatorului pe 8 biți
+- `overflow`: depășire cu semn — activat când ambii operanzi au același MSB dar MSB-ul rezultatului diferă
+
+Comportament de control: necesită `enable=1`; la `start`, rezultatul este înregistrat și se emite un puls `done` de un ciclu.
+
+### 6.2 Înmulțire (`booth_radix_4_multiplier`)
+
+Fișier: `src/arithmetic/multiplier/booth_radix_4_multiplier.v`
+
+Înmulțitor iterativ Booth radix-4 cu semn, 8×8 → ieșire pe 16 biți, 4 iterații de recodificare.
+
+Stare internă: `acc[15:0]`, `x_shift[15:0]`, `y_ext[8:0]`, `count[2:0]`.
+
+Decodificarea Booth pe `y_ext[2:0]`:
+
+| Biți | Acțiune |
+|---|---|
+| `001`, `010` | `+X` |
+| `011` | `+2X` |
+| `100` | `-2X` |
+| `101`, `110` | `-X` |
+| implicit | `0` |
+
+Pasul de acumulare pe 16 biți este construit din două instanțe structurale `carry_select_adder` (octetul inferior și superior), alimentate prin `xor_wordgate` pentru inversare controlată de semn:
 
 ```verilog
-assign overflow_raw = (op1[7]==op2_xor[7]) && (adder_result[7] != op1[7]);
+xor_wordgate #(.w(8)) inv_lo (.in(booth_operand[7:0]),  .bit_in(booth_sub), .out(booth_operand_xor[7:0]));
+xor_wordgate #(.w(8)) inv_hi (.in(booth_operand[15:8]), .bit_in(booth_sub), .out(booth_operand_xor[15:8]));
+carry_select_adder add_lo (.op1(acc[7:0]),  .op2(booth_operand_xor[7:0]),  .c_in(booth_sub),  .result(add_lo_result), .c_out(add_lo_cout));
+carry_select_adder add_hi (.op1(acc[15:8]), .op2(booth_operand_xor[15:8]), .c_in(add_lo_cout), .result(add_hi_result), .c_out(add_hi_cout));
 ```
 
-Control behavior:
-- requires `enable=1`
-- consumes `start`
-- exposes `busy` and one-cycle `done` pulse
+FSM-ul modulului: `IDLE` → `CALC` (4 iterații) → `FINISH` (publică produsul, pulsează `done`).
 
-### 6.2 Multiply (`booth_radix_4_multiplier`)
+### 6.3 Împărțire (`radix2_div`)
 
-File: `src/arithmetic/multiplier/booth_radix_4_multiplier.v`
+Fișier: `src/arithmetic/division/Radix2.v`
 
-Algorithm:
-- signed radix-4 Booth multiplication
-- 8-bit by 8-bit input, 16-bit output
-- 4 recoding iterations (`count = 4`)
+Împărțire restaurativă radix-2 fără semn, lățime parametrizată (implicit `WIDTH=8`), 8 iterații.
 
-Internal state:
-- `acc[15:0]`
-- `x_shift[15:0]`
-- `y_ext[8:0]`
-- `count`
+Registre: `A` (rest parțial), `M` (împărțitor), `Q` (registru cât), `count`.
 
-Booth decode over `y_ext[2:0]`:
-- `001`, `010` => `+X`
-- `011` => `+2X`
-- `100` => `-2X`
-- `101`, `110` => `-X`
-- default => `0`
+Operație per ciclu:
+1. deplasarea frontierei între restul parțial `A` și registrul de cât `Q`
+2. scăderea împărțitorului prin `carry_select_adder` structural (cu `xor_wordgate` pentru inversare)
+3. dacă rezultatul este nenegativ (transport = 1): se acceptă și se setează `Q[0]=1`; altfel se restaurează prin al doilea `carry_select_adder` și se setează `Q[0]=0`
 
-Module FSM:
-- `IDLE` -> wait for start
-- `CALC` -> iterate Booth updates
-- `FINISH` -> publish product, pulse done
+```verilog
+xor_wordgate #(.w(WIDTH)) neg_m (.in(M), .bit_in(1'b1), .out(M_inv));
+carry_select_adder sub_adder     (.op1(shifted_A), .op2(M_inv), .c_in(1'b1), .result(sub_result),     .c_out(sub_cout));
+carry_select_adder restore_adder (.op1(sub_result), .op2(M),    .c_in(1'b0), .result(restore_result), .c_out());
+```
 
-### 6.3 Divide (`radix2_div`)
+La finalizare se produc `quotient` și `remainder`. Stările modulului: `IDLE` → `CALC` (8 cicluri) → înapoi la `IDLE`. Nu este implementată semnalizarea împărțirii la zero.
 
-File: `src/arithmetic/division/Radix2.v`
+## 7. Blocuri Structurale Comune
 
-Algorithm:
-- unsigned radix-2 restoring division
-- default `WIDTH=8`
+Director: `src/common`
 
-Registers:
-- `A` (partial remainder)
-- `M` (divisor)
-- `Q` (quotient register)
-- `count` (iteration count)
-
-Per-cycle operation:
-1. shift boundary between `A` and `Q`
-2. subtract divisor
-3. keep subtraction result and insert 1 in Q if non-negative
-4. otherwise restore and insert 0 in Q
-
-Completion behavior:
-- `quotient <= Q`
-- `remainder <= A`
-- `done <= 1`
-- `ready <= 1`
-
-Module states:
-
-| Current | Condition | Next |
-|---|---|---|
-| `IDLE` | `start=0` | `IDLE` |
-| `IDLE` | `start=1` | `CALC` |
-| `CALC` | `count>0` | `CALC` |
-| `CALC` | `count==0` | `IDLE` |
-
-Constraint:
-- no dedicated divide-by-zero error signaling is implemented.
-
-## 7. Common Structural Blocks
-
-Directory: `src/common`
-
-| Module | Role |
+| Modul | Rol |
 |---|---|
-| `full_adder_cell` | 1-bit full adder primitive |
-| `ripple_carry_adder` | parameterized ripple adder chain |
-| `adder_level` | dual-carry precompute/select stage |
-| `carry_select_adder` | 8-bit adder using ripple + carry-select |
-| `xor_wordgate` | word-wise XOR with replicated control bit |
-| `mux2to1` | generic 2:1 mux |
-| `register_8bit` | operand storage register |
+| `full_adder_cell` | sumatorul complet pe 1 bit — primitiva de bază |
+| `ripple_carry_adder` | lanț sumator cu transport în cascadă, parametrizat |
+| `adder_level` | etapă de precomputare/selectare cu transport dublu (jumătatea superioară carry-select, 4 biți) |
+| `carry_select_adder` | sumator pe 8 biți: ripple pe biții [3:0], `adder_level` pe biții [7:4] |
+| `xor_wordgate` | XOR la nivel de cuvânt cu bit de control replicat (`out = in ^ {w{bit_in}}`) |
+| `mux2to1` | multiplexor generic parametric 2:1 |
+| `register_8bit` | registru sincron de stocare a operanzilor cu reset asincron |
 
-The ALU architecture is intentionally structural: higher-level arithmetic units are composed from these reusable blocks.
+Toate unitățile aritmetice de nivel superior sunt compuse exclusiv din aceste blocuri reutilizabile. Niciun operator aritmetic comportamental nu apare în stratul structural.
 
-## 8. End-to-End Functional Timing
+## 8. Secvența de Funcționare de Capăt la Capăt
 
-For any valid opcode, the top-level behavior shall be:
-1. `start` asserted with stable `A_raw`, `B_raw`, `opcode`
-2. control enters `LOAD` and latches operands
-3. control enters `EXEC` and drives `exec_start` for selected engine
-4. selected engine asserts local done condition
-5. control enters `DONE` and asserts top-level `done`
-6. caller deasserts `start`, allowing return to `IDLE`
+Pentru orice opcode valid, comportamentul la nivel superior este:
+1. `start` este asertat cu `A_raw`, `B_raw`, `opcode` stabile
+2. controlul intră în starea `LOAD` și reține operanzii în `reg_A`, `reg_B`
+3. controlul intră în starea `EXEC` și aplică `exec_start` motorului selectat
+4. motorul selectat asertează condiția sa locală de finalizare
+5. controlul intră în starea `DONE` și asertează `done` la nivel superior
+6. apelantul deasertează `start`, permițând întoarcerea la `IDLE`
 
-## 9. Performance and Latency
+## 9. Performanță și Latență
 
-Latency is reported in clock cycles. To provide concrete time values, the current integrated testbench clock is also shown:
-- `sim/alu_tb.v` uses `always #5 clk = ~clk;`
-- clock period = 10 ns
+Perioada de ceas: 10 ns (`always #5 clk = ~clk` în testbench).
 
-Two latency viewpoints are useful:
-- engine latency: from `exec_start` sampled by the arithmetic engine to that engine's local `done`
-- top-level latency: from `start` sampled in `IDLE` by `control_unit` to top-level `done`
-
-| Operation | Engine latency (cycles) | Top-level latency (cycles) | Top-level latency at 10 ns clk |
+| Operație | Latență motor (cicluri) | Latență nivel superior (cicluri) | La 10 ns ceas |
 |---|---:|---:|---:|
-| Add (`opcode=00`) | 1 | 4 | 40 ns |
-| Sub (`opcode=01`) | 1 | 4 | 40 ns |
-| Mul (`opcode=10`) | 6 | 9 | 90 ns |
-| Div (`opcode=11`) | 9 | 12 | 120 ns |
+| Adunare (`opcode=00`) | 1 | 4 | 40 ns |
+| Scădere (`opcode=01`) | 1 | 4 | 40 ns |
+| Înmulțire (`opcode=10`) | 6 | 9 | 90 ns |
+| Împărțire (`opcode=11`) | 9 | 12 | 120 ns |
 
-Top-level latency includes fixed control overhead (`LOAD`, dispatch in `EXEC`, and transition to `DONE`).
+Latența la nivel superior include un ciclu fix de supracap de control: un ciclu `LOAD`, un ciclu de dispatch în `EXEC` și un ciclu `DONE`.
 
-### 9.1 Efficiency interpretation
+### 9.1 Interpretarea eficienței
 
-- Add/Sub is the fastest path in this architecture because its datapath is combinational and only uses a short handshake.
-- Multiply is medium latency because Booth radix-4 reduces the number of partial-product iterations to 4 (for 8-bit inputs), but remains sequential.
-- Divide is the slowest path because radix-2 restoring division performs one quotient-bit update per cycle and requires restore logic.
+- **Adunare/Scădere** este calea cea mai rapidă: calea de date este combinațională; doar protocolul de control adaugă cicluri.
+- **Înmulțirea** are latență medie: Booth radix-4 reduce iterațiile produselor parțiale la 4 (jumătate față de Booth radix-2), dar rămâne secvențial.
+- **Împărțirea** este calea cea mai lentă: radix-2 restaurativ efectuează o actualizare a unui bit de cât per ciclu și necesită un pas de restaurare pentru scăderile eșuate.
 
-## 10. Algorithm Selection Rationale and Trade-offs
+## 10. Rațiunea Alegerii Algoritmilor și Compromisuri
 
-### 10.1 Add/Sub algorithm choice
+### 10.1 Alegerea algoritmului pentru adunare/scădere
 
-Chosen approach:
-- two's-complement add/sub reuse (`A + B` or `A + (~B) + 1`)
-- `carry_select_adder` for the arithmetic core
+Abordare aleasă: reutilizarea adunării/scăderii în complement față de doi printr-un nucleu `carry_select_adder`.
 
-Why this was chosen:
-- one shared datapath supports both add and subtract with minimal control complexity
-- keeps the design structural and reusable with existing common blocks
+**Avantaje:**
+- o singură cale de date comună suportă atât adunarea cât și scăderea printr-un singur bit `sub_mode`
+- carry-select este mai rapid decât ripple pur la lățimea de 8 biți, datorită precomputării paralele a transportului
+- flagurile de transport și depășire cu semn sunt generate cu logică minimă suplimentară
 
-Advantages:
-- compact control model (single `sub_mode` bit)
-- faster than pure ripple at 8-bit width due to carry-select upper stage
-- straightforward carry and overflow flag generation
+**Dezavantaje:**
+- carry-select duplică sumatorul jumătății superioare, crescând aria față de un design pur ripple
+- compoziție fixă pe 8 biți; nu este parametric la interfața de nivel superior
 
-Disadvantages:
-- carry-select duplicates some logic, increasing area versus pure ripple
-- fixed 8-bit composition is less flexible than a fully parameterized arithmetic core
+### 10.2 Alegerea algoritmului pentru înmulțitor
 
-### 10.2 Multiplier algorithm choice
+Abordare aleasă: înmulțitor iterativ Booth radix-4 cu semn.
 
-Chosen approach:
-- signed Booth radix-4 iterative multiplier
+**Avantaje:**
+- suport nativ pentru operanzi pe 8 biți cu semn prin recodificare Booth
+- 4 iterații pentru intrări de 8 biți (jumătate față de Booth radix-2)
+- amprentă hardware moderată față de înmulțitoarele complet paralele
 
-Why this was chosen:
-- naturally supports signed operands
-- reduces iteration count compared with radix-2 Booth and shift-add baseline
-- aligns with structural, clocked datapath style of the project
+**Dezavantaje:**
+- latență multi-ciclu (6 cicluri motor); fără debit pe un singur ciclu
+- controlul și calea de date mai complexe decât un simplu înmulțitor shift-add
+- mișcare suplimentară a registrului de stare per ciclu
 
-Advantages:
-- fewer arithmetic iterations (4 for 8-bit inputs)
-- signed arithmetic handling is integrated in the recoding process
-- moderate hardware footprint compared with fully parallel multipliers
+### 10.3 Alegerea algoritmului pentru împărțitor
 
-Disadvantages:
-- multi-cycle latency (not single-cycle throughput)
-- control and datapath are more complex than simple shift-add multipliers
-- additional state/register movement per cycle increases control overhead
+Abordare aleasă: împărțire restaurativă radix-2 fără semn.
 
-### 10.3 Divider algorithm choice
+**Avantaje:**
+- algoritm simplu și determinist cu mapare structurală directă
+- comportament clar per ciclu: registre de cât/rest, număr fix de iterații
+- ușor de verificat față de referința `a / b` și `a % b`
 
-Chosen approach:
-- radix-2 restoring division
+**Dezavantaje:**
+- latența cea mai mare dintre cele patru operații (9 cicluri motor)
+- pasul de restaurare adaugă muncă suplimentară pentru scăderile eșuate
+- nicio semnalizare de excepție la împărțirea cu zero
 
-Why this was chosen:
-- deterministic, easy-to-follow algorithm suitable for structural implementation
-- clear mapping to quotient/remainder registers and per-cycle control
+### 10.4 Compromisul arhitectural global
 
-Advantages:
-- simple and robust control behavior
-- predictable cycle count at fixed width
-- straightforward functional verification against `a / b` and `a % b`
+Algoritmii selectați prioritizează consistent **claritatea structurală** și **reutilizarea modulară a blocurilor comune** față de latența minimă sau debitul maxim. Fiecare operație aritmetică din stratul motorului se reduce la instanțe de `carry_select_adder`, `xor_wordgate` și `mux2to1`.
 
-Disadvantages:
-- highest latency among implemented operations
-- restoring step adds extra work in unsuccessful subtraction cases
-- current implementation has no explicit divide-by-zero exception signaling
+## 11. Verificare
 
-### 10.4 Overall architectural trade-off
+Script de rulare: `run.sh`
 
-The selected arithmetic algorithms prioritize:
-- structural clarity
-- modular reuse of shared building blocks
-- deterministic multi-cycle control
-
-over:
-- minimum possible latency
-- maximum throughput of deeply parallel arithmetic units
-
-## 11. Verification References
-
-| Artifact | File |
+| Artefact | Fișier |
 |---|---|
-| Integrated ALU testbench | `sim/alu_tb.v` |
-| Multiplier testbench | `src/arithmetic/multiplier/booth_radix_4_multiplier_tb.v` |
-| Divider testbench | `src/arithmetic/division/Radix2_tb.v` |
-| Run script | `run.sh` |
+| Testbench integrat ALU | `sim/alu_tb.v` |
+| Testbench unitate înmulțitor | `src/arithmetic/multiplier/booth_radix_4_multiplier_tb.v` |
+| Testbench unitate împărțitor | `src/arithmetic/division/Radix2_tb.v` |
+
+### 11.1 Testbench integrat ALU — `sim/alu_tb.v`
+
+Instanțiază `alu_top` și exercită toate cele patru operații printr-un task `run_op` care aplică intrările, eliberează `start`, așteaptă `done` și compară `result` cu o valoare așteptată precomputată. La nepotrivire, taskul apelează `$fatal` pentru a opri simularea imediat.
+
+| Operație | Cazuri | Cazuri limită notabile |
+|---|---:|---|
+| Adunare | 8 | operanzi zero, valori maxime, depășire 8 biți |
+| Scădere | 7 | operanzi egali, depășire inferioară, `0-1` |
+| Înmulțire | 8 | zero, identitate, `255*2` ca semnat (`-1*2 = 0xFFFE`) |
+| Împărțire | 9 | deîmpărțit zero, operanzi egali, `1/2`, `255/16`, `100/7` |
+
+Generează `alu_sim.vcd` pentru vizualizarea formelor de undă după simulare.
+
+### 11.2 Testbench unitate înmulțitor — `booth_radix_4_multiplier_tb.v`
+
+Testează `booth_radix_4_multiplier` izolat folosind intrări pe 8 biți cu semn. Taskul `run_case` calculează automat rezultatul așteptat prin aritmetica Verilog cu semn și îl verifică după `done`. Un timeout de 40 de cicluri declanșează `$fatal` dacă modulul se blochează.
+
+- 10 cazuri directe: `0*0`, perechi pozitive, perechi negative, semne mixte, valori extreme (`-128*127`, `127*-128`, `-128*-128`)
+- 30 cazuri aleatoare prin `$random` pentru o acoperire largă a domeniului cu semn
+
+Generează `booth_radix_4_multiplier_tb.vcd`.
+
+### 11.3 Testbench unitate împărțitor — `Radix2_tb.v`
+
+Testează `radix2_div` izolat folosind intrări pe 8 biți fără semn. Taskul `run_test` așteaptă `ready`, aplică intrările, pulsează `start`, așteaptă `done`, apoi verifică `quotient` și `remainder` față de operatorii `/` și `%` din Verilog.
+
+14 cazuri incluzând: `100/5`, `50/3`, `255/2`, `128/9`, `0/5` (deîmpărțit zero), `7/7` (operanzi egali), `1/2` (cât zero), `255/255`, `255/1`.
+
+Notă: împărțirea cu zero nu este testată deoarece modulul nu are semnalizare de eroare pentru acest caz.

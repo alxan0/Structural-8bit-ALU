@@ -47,3 +47,5 @@ vivado_*.backup.*
 # IDEs
 .vscode/
 *.swp
+
+alu_sim_bin
