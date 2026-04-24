@@ -22,10 +22,10 @@ module control_unit (
 
     always @(*) begin
         case (state)
-            IDLE:    next_state = start    ? LOAD : IDLE;
+            IDLE:    next_state = start     ? LOAD : IDLE;
             LOAD:    next_state = EXEC;
             EXEC:    next_state = exec_done ? DONE : EXEC;
-            DONE:    next_state = start    ? DONE : IDLE;
+            DONE:    next_state = start     ? DONE : IDLE;
             default: next_state = IDLE;
         endcase
     end
